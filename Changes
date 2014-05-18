@@ -1,5 +1,8 @@
 Revision history for Perl extension Config-Tiny:
 
+2.30 Sun May 18th 19:35:00 2013
+	- Add support for Arrays with name[]=syntax
+
 2.20  Sun Nov 24 10:52:00 2013
 	- Relax pre-req version requirements
 
