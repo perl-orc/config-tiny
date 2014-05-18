@@ -5,8 +5,8 @@ package Config::Tiny;
 use strict;
 our $VERSION = '2.20'; # Also change version # in t/02.main.t.
 BEGIN {
-	require 5.008001;
-	$Config::Tiny::errstr  = '';
+  require 5.008001;
+  $Config::Tiny::errstr  = '';
 }
 
 # Create an empty object
@@ -14,107 +14,121 @@ sub new { bless {}, shift }
 
 # Create an object from a file
 sub read {
-	my $class = ref $_[0] ? ref shift : shift;
-	my $file  = shift or return $class->_error('No file name provided');
+  my $class = ref $_[0] ? ref shift : shift;
+  my $file  = shift or return $class->_error('No file name provided');
 
-	# Slurp in the file.
+  # Slurp in the file.
 
-	my $encoding = shift;
-	$encoding    = $encoding ? "<:$encoding" : '<';
-	local $/     = undef;
+  my $encoding = shift;
+  $encoding    = $encoding ? "<:$encoding" : '<';
+  local $/     = undef;
 
-	open( CFG, $encoding, $file ) or return $class->_error( "Failed to open file '$file' for reading: $!" );
-	my $contents = <CFG>;
-	close( CFG );
+  open( CFG, $encoding, $file ) or return $class->_error( "Failed to open file '$file' for reading: $!" );
+  my $contents = <CFG>;
+  close( CFG );
 
-	return $class -> _error("Reading from '$file' returned undef") if (! defined $contents);
+  return $class -> _error("Reading from '$file' returned undef") if (! defined $contents);
 
-	return $class->read_string( $contents );
+  return $class->read_string( $contents );
 }
 
 # Create an object from a string
 sub read_string {
-	my $class = ref $_[0] ? ref shift : shift;
-	my $self  = bless {}, $class;
-	return undef unless defined $_[0];
+  my $class = ref $_[0] ? ref shift : shift;
+  my $self  = bless {}, $class;
+  return undef unless defined $_[0];
 
-	# Parse the file
-	my $ns      = '_';
-	my $counter = 0;
-	foreach ( split /(?:\015{1,2}\012|\015|\012)/, shift ) {
-		$counter++;
+  # Parse the file
+  my $ns      = '_';
+  my $counter = 0;
+  foreach ( split /(?:\015{1,2}\012|\015|\012)/, shift ) {
+    $counter++;
 
-		# Skip comments and empty lines
-		next if /^\s*(?:\#|\;|$)/;
+    # Skip comments and empty lines
+    next if /^\s*(?:\#|\;|$)/;
 
-		# Remove inline comments
-		s/\s\;\s.+$//g;
+    # Remove inline comments
+    s/\s\;\s.+$//g;
 
-		# Handle section headers
-		if ( /^\s*\[\s*(.+?)\s*\]\s*$/ ) {
-			# Create the sub-hash if it doesn't exist.
-			# Without this sections without keys will not
-			# appear at all in the completed struct.
-			$self->{$ns = $1} ||= {};
-			next;
-		}
+    # Handle section headers
+    if ( /^\s*\[\s*(.+?)\s*\]\s*$/ ) {
+      # Create the sub-hash if it doesn't exist.
+      # Without this sections without keys will not
+      # appear at all in the completed struct.
+      $self->{$ns = $1} ||= {};
+      next;
+    }
 
-		# Handle properties
-		if ( /^\s*([^=]+?)\s*=\s*(.*?)\s*$/ ) {
-			$self->{$ns}->{$1} = $2;
-			next;
-		}
+    # Handle properties
+    if ( /^\s*([^=]+?)\s*=\s*(.*?)\s*$/ ) {
+      my ($prop,$value) = ($1,$2);
+      if ($prop =~ /(.+)\[]$/) {
+		$prop = $1;
+        if (my $thing = $self->{$ns}->{$prop}) {
+          if (ref $thing eq 'ARRAY') {
+            $self->{$ns}->{$prop} = [@{$self->{$ns}->{$prop}}, $value];
+          } else {
+            $self->{$ns}->{$prop} = [$self->{$ns}->{$prop},$value]
+          }
+        } else {
+          $self->{$ns}->{$prop} = $value;
+        }
+      } else {
+        $self->{$ns}->{$prop} = $value;
+      }
+      next;
+    }
 
-		return $self->_error( "Syntax error at line $counter: '$_'" );
-	}
+    return $self->_error( "Syntax error at line $counter: '$_'" );
+  }
 
-	$self;
+  $self;
 }
 
 # Save an object to a file
 sub write {
-	my $self     = shift;
-	my $file     = shift or return $self->_error('No file name provided');
-	my $encoding = shift;
-	$encoding    = $encoding ? ">:$encoding" : '>';
+  my $self     = shift;
+  my $file     = shift or return $self->_error('No file name provided');
+  my $encoding = shift;
+  $encoding    = $encoding ? ">:$encoding" : '>';
 
-	# Write it to the file
-	my $string = $self->write_string;
-	return undef unless defined $string;
-	open( CFG, $encoding, $file ) or return $self->_error(
-		"Failed to open file '$file' for writing: $!"
-		);
-	print CFG $string;
-	close CFG;
+  # Write it to the file
+  my $string = $self->write_string;
+  return undef unless defined $string;
+  open( CFG, $encoding, $file ) or return $self->_error(
+    "Failed to open file '$file' for writing: $!"
+    );
+  print CFG $string;
+  close CFG;
 
-	return 1;
+  return 1;
 }
 
 # Save an object to a string
 sub write_string {
-	my $self = shift;
+  my $self = shift;
 
-	my $contents = '';
-	foreach my $section ( sort { (($b eq '_') <=> ($a eq '_')) || ($a cmp $b) } keys %$self ) {
-		# Check for several known-bad situations with the section
-		# 1. Leading whitespace
-		# 2. Trailing whitespace
-		# 3. Newlines in section name
-		return $self->_error(
-			"Illegal whitespace in section name '$section'"
-		) if $section =~ /(?:^\s|\n|\s$)/s;
-		my $block = $self->{$section};
-		$contents .= "\n" if length $contents;
-		$contents .= "[$section]\n" unless $section eq '_';
-		foreach my $property ( sort keys %$block ) {
-			return $self->_error(
-				"Illegal newlines in property '$section.$property'"
-			) if $block->{$property} =~ /(?:\012|\015)/s;
-			$contents .= "$property=$block->{$property}\n";
-		}
-	}
+  my $contents = '';
+  foreach my $section ( sort { (($b eq '_') <=> ($a eq '_')) || ($a cmp $b) } keys %$self ) {
+    # Check for several known-bad situations with the section
+    # 1. Leading whitespace
+    # 2. Trailing whitespace
+    # 3. Newlines in section name
+    return $self->_error(
+      "Illegal whitespace in section name '$section'"
+    ) if $section =~ /(?:^\s|\n|\s$)/s;
+    my $block = $self->{$section};
+    $contents .= "\n" if length $contents;
+    $contents .= "[$section]\n" unless $section eq '_';
+    foreach my $property ( sort keys %$block ) {
+      return $self->_error(
+        "Illegal newlines in property '$section.$property'"
+      ) if $block->{$property} =~ /(?:\012|\015)/s;
+      $contents .= "$property=$block->{$property}\n";
+    }
+  }
 
-	$contents;
+  $contents;
 }
 
 # Error handling
@@ -133,48 +147,48 @@ Config::Tiny - Read/Write .ini style files with as little code as possible
 
 =head1 SYNOPSIS
 
-	# In your configuration file
-	rootproperty=blah
+  # In your configuration file
+  rootproperty=blah
 
-	[section]
-	one=twp
-	three= four
-	Foo =Bar
-	empty=
+  [section]
+  one=twp
+  three= four
+  Foo =Bar
+  empty=
 
-	# In your program
-	use Config::Tiny;
+  # In your program
+  use Config::Tiny;
 
-	# Create a config
-	my $Config = Config::Tiny->new;
+  # Create a config
+  my $Config = Config::Tiny->new;
 
-	# Open the config
-	$Config = Config::Tiny->read( 'file.conf' );
-	$Config = Config::Tiny->read( 'file.conf', 'utf8' ); # Neither ':' nor '<:' prefix!
-	$Config = Config::Tiny->read( 'file.conf', 'encoding(iso-8859-1)');
+  # Open the config
+  $Config = Config::Tiny->read( 'file.conf' );
+  $Config = Config::Tiny->read( 'file.conf', 'utf8' ); # Neither ':' nor '<:' prefix!
+  $Config = Config::Tiny->read( 'file.conf', 'encoding(iso-8859-1)');
 
-	# Reading properties
-	my $rootproperty = $Config->{_}->{rootproperty};
-	my $one = $Config->{section}->{one};
-	my $Foo = $Config->{section}->{Foo};
+  # Reading properties
+  my $rootproperty = $Config->{_}->{rootproperty};
+  my $one = $Config->{section}->{one};
+  my $Foo = $Config->{section}->{Foo};
 
-	# Changing data
-	$Config->{newsection} = { this => 'that' }; # Add a section
-	$Config->{section}->{Foo} = 'Not Bar!';     # Change a value
-	delete $Config->{_};                        # Delete a value or section
+  # Changing data
+  $Config->{newsection} = { this => 'that' }; # Add a section
+  $Config->{section}->{Foo} = 'Not Bar!';     # Change a value
+  delete $Config->{_};                        # Delete a value or section
 
-	# Save a config
-	$Config->write( 'file.conf' );
-	$Config->write( 'file.conf', 'utf8' ); # Neither ':' nor '>:' prefix!
+  # Save a config
+  $Config->write( 'file.conf' );
+  $Config->write( 'file.conf', 'utf8' ); # Neither ':' nor '>:' prefix!
 
-	# Shortcuts
-	my($rootproperty) = $$Config{_}{rootproperty};
+  # Shortcuts
+  my($rootproperty) = $$Config{_}{rootproperty};
 
-	my($config) = Config::Tiny -> read_string('alpha=bet');
-	my($value)  = $$config{_}{alpha}; # $value is 'bet'.
+  my($config) = Config::Tiny -> read_string('alpha=bet');
+  my($value)  = $$config{_}{alpha}; # $value is 'bet'.
 
-	my($config) = Config::Tiny -> read_string("[init]\nalpha=bet");
-	my($value)  = $$config{init}{alpha}; # $value is 'bet'.
+  my($config) = Config::Tiny -> read_string("[init]\nalpha=bet");
+  my($value)  = $$config{init}{alpha}; # $value is 'bet'.
 
 =head1 DESCRIPTION
 
@@ -200,9 +214,9 @@ See L<Config::Tiny::Ordered> (and possibly others) for the preservation of the o
 
 Files are the same format as for MS Windows C<*.ini> files. For example:
 
-	[section]
-	var1=value1
-	var2=value2
+  [section]
+  var1=value1
+  var2=value2
 
 If a property is outside of a section at the beginning of a file, it will
 be assigned to the C<"root section">, available at C<$Config-E<gt>{_}>.
@@ -278,7 +292,7 @@ Generates the file content for the object and returns it as a string.
 
 Because a line like:
 
-	key=value # A comment
+  key=value # A comment
 
 Sets key to 'value # A comment' :-(.
 
@@ -288,19 +302,19 @@ This conforms to the syntax discussed in L</CONFIGURATION FILE SYNTAX>.
 
 E.g.:
 
-	[Things]
-	my =
-	list =
-	of =
-	things =
+  [Things]
+  my =
+  list =
+  of =
+  things =
 
 Instead of:
 
-	[Things]
-	my
-	list
-	of
-	things
+  [Things]
+  my
+  list
+  of
+  things
 
 Because the use of '=' signs is a type of mandatory documentation. It indicates that that section contains 4 items,
 and not 1 odd item split over 4 lines.
@@ -313,16 +327,16 @@ Yes, the syntax may seem odd, but you don't have to call both new() and read_str
 
 Try:
 
-	perl -MData::Dumper -MConfig::Tiny -E 'my $c=Config::Tiny->read_string("one=s"); say Dumper $c'
+  perl -MData::Dumper -MConfig::Tiny -E 'my $c=Config::Tiny->read_string("one=s"); say Dumper $c'
 
 Or:
 
-	my($config) = Config::Tiny -> read_string('alpha=bet');
-	my($value)  = $$config{_}{alpha}; # $value is 'bet'.
+  my($config) = Config::Tiny -> read_string('alpha=bet');
+  my($value)  = $$config{_}{alpha}; # $value is 'bet'.
 
 Or even, a bit ridiculously:
 
-	my($value) = ${Config::Tiny -> read_string('alpha=bet')}{_}{alpha}; # $value is 'bet'.
+  my($value) = ${Config::Tiny -> read_string('alpha=bet')}{_}{alpha}; # $value is 'bet'.
 
 =head1 CAVEATS
 
