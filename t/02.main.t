@@ -23,7 +23,7 @@ BEGIN {
 
 use UNIVERSAL ();
 
-our $VERSION = '2.20';
+our $VERSION = '2.30';
 
 # --------------------
 
