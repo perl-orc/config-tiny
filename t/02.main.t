@@ -13,7 +13,13 @@ use Config::Tiny ();
 use File::Spec;
 use File::Temp;
 
-use Test::More tests => 33;
+use Test::More;
+
+BEGIN {
+    if (!eval q{ use Test::Differences; 1 }) {
+        *eq_or_diff = \&is_deeply;
+    }
+}
 
 use UNIVERSAL ();
 
@@ -58,7 +64,7 @@ my $expected = {
 	},
 };
 bless $expected, 'Config::Tiny';
-is_deeply( $Config, $expected, 'Config structure matches expected' );
+eq_or_diff( $Config, $expected, 'Config structure matches expected' );
 
 # Add some stuff to the trivial config and check write_string() for it
 $Trivial->{_} = {
@@ -87,7 +93,7 @@ END
 # Test read_string
 my $Read = Config::Tiny->read_string( $string );
 ok( $Read, 'read_string() returns true' );
-is_deeply( $Read, $Trivial, 'read_string() returns expected value' );
+eq_or_diff( $Read, $Trivial, 'read_string() returns expected value' );
 
 my $generated = $Trivial->write_string();
 ok( length $generated, 'write_string() returns something' );
@@ -112,7 +118,7 @@ ok( UNIVERSAL::isa( $Read, 'HASH' ), 'read() of what we wrote returns a hash ref
 isa_ok( $Read, 'Config::Tiny' );
 
 # Check the structure of what we read back in
-is_deeply( $Read, $Trivial, 'What we read matches what we wrote out' );
+eq_or_diff( $Read, $Trivial, 'What we read matches what we wrote out' );
 
 
 #####################################################################
@@ -175,3 +181,5 @@ SCOPE: {
 		'errstr() returns expected error',
 	);
 }
+
+done_testing;
